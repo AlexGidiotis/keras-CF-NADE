@@ -97,47 +97,27 @@ if __name__ == "__main__":
 	print val_size,'validation examples'
 	print test_size,'testing example'
 
-	
-	train_input_ratings = np.zeros((num_movies, num_users), dtype='int8')
-	train_output_ratings = np.zeros((num_movies, num_users), dtype='int8')
-	#train_input_masks = np.zeros((num_movies, num_users), dtype='int8')
-	#train_output_masks = np.zeros((n_movies, n_users), dtype='int8')
-	
-	valid_input_ratings = np.zeros((num_movies, num_users), dtype='int8')
-	valid_output_ratings = np.zeros((num_movies, num_users), dtype='int8')
-	#valid_input_masks = np.zeros((num_movies, num_users), dtype='int8')
-	#valid_output_masks = np.zeros((n_movies, n_users), dtype='int8')
-	
-	test_input_ratings = np.zeros((num_movies, num_users), dtype='int8')
-	test_output_ratings = np.zeros((num_movies, num_users), dtype='int8')
-	#test_input_masks = np.zeros((num_movies, num_users), dtype='int8')
-	#test_output_masks = np.zeros((n_movies, n_users), dtype='int8')
-
-	for usr,mov,val in train_df.collect():
-		train_input_ratings[mov,usr] = val
-		valid_input_ratings[mov,usr] = val
 
 
-	for usr,mov,val in val_df.collect():
-		valid_input_ratings[mov,usr] = val
 
-	for usr,mov,val in test_df.collect():
-		test_input_ratings[mov,usr] = val
+	train_examples = train_df.select("movieId", F.struct(["userId","value"]).alias("ranking")) \
+		.groupby('movieId') \
+		.agg(F.collect_list('ranking').alias('rankings'))
+	val_examples = val_df.select("movieId", F.struct(["userId","value"]).alias("ranking")) \
+		.groupby('movieId') \
+		.agg(F.collect_list('ranking').alias('rankings'))
+	test_examples = test_df.select("movieId", F.struct(["userId","value"]).alias("ranking")) \
+		.groupby('movieId') \
+		.agg(F.collect_list('ranking').alias('rankings'))
 
-	print train_input_ratings
-	print train_input_ratings.shape
-	
-	'''
-	train_df, test_df = df.randomSplit([0.9, 0.1], seed=1)
-
-	train_df \
-		.repartition(200) \
-		.persist()
-	test_df \
-		.repartition(200) \
-		.persist()
+	train_examples.show()
+	val_examples.show()
+	test_examples.show()
 
 
-	train_size = train_df.count()
-	test_size = test_df.count()
-	'''
+	train_examples.write.json(path="data/train_set",
+		mode='overwrite')
+	val_examples.write.json(path="data/val_set",
+		mode='overwrite')
+	test_examples.write.json(path="data/test_set",
+		mode='overwrite')
