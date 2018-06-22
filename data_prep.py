@@ -88,6 +88,13 @@ if __name__ == "__main__":
 	train_df, val_df = train_df.randomSplit([0.95, 0.05], 
 		seed=45)
 
+	train_df = train_df.withColumn('flag', F.lit(0))
+	val_df = val_df.withColumn('flag', F.lit(1))
+	val_df = val_df.union(train_df)
+	test_df = test_df.withColumn('flag', F.lit(2))
+	test_df = test_df.union(train_df)
+	test_df = test_df.union(val_df)
+
 	train_size = train_df.count()
 	val_size = val_df.count()
 	test_size =  test_df.count()
@@ -100,13 +107,13 @@ if __name__ == "__main__":
 
 
 
-	train_examples = train_df.select("movieId", F.struct(["userId","value"]).alias("ranking")) \
+	train_examples = train_df.select("movieId", F.struct(["userId","value","flag"]).alias("ranking")) \
 		.groupby('movieId') \
 		.agg(F.collect_list('ranking').alias('rankings'))
-	val_examples = val_df.select("movieId", F.struct(["userId","value"]).alias("ranking")) \
+	val_examples = val_df.select("movieId", F.struct(["userId","value","flag"]).alias("ranking")) \
 		.groupby('movieId') \
 		.agg(F.collect_list('ranking').alias('rankings'))
-	test_examples = test_df.select("movieId", F.struct(["userId","value"]).alias("ranking")) \
+	test_examples = test_df.select("movieId", F.struct(["userId","value","flag"]).alias("ranking")) \
 		.groupby('movieId') \
 		.agg(F.collect_list('ranking').alias('rankings'))
 
@@ -115,9 +122,9 @@ if __name__ == "__main__":
 	test_examples.show()
 
 
-	train_examples.write.json(path="data/train_set",
+	train_examples.coalesce(1).write.json(path="data/train_set",
 		mode='overwrite')
-	val_examples.write.json(path="data/val_set",
+	val_examples.coalesce(1).write.json(path="data/val_set",
 		mode='overwrite')
-	test_examples.write.json(path="data/test_set",
+	test_examples.coalesce(1).write.json(path="data/test_set",
 		mode='overwrite')

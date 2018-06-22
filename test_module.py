@@ -9,15 +9,27 @@ from keras.layers import Dense, Input, LSTM, Embedding, Dropout, Activation, Lam
 from keras import backend as K
 from keras.models import Model
 from keras.callbacks import Callback
+import keras.regularizers
+from keras.optimizers import Adam
 
 import tensorflow as tf
+
+
+def softmax_with_extra(x,axis):
+	e = K.exp(x - K.max(x, axis=axis, keepdims=True))
+	s = K.sum(e, axis=axis, keepdims=True)
+
+	return e / s
+
 
 
 def prediction_layer(x):
 	# x.shape = (?,6040,5)
 	x_cumsum = K.cumsum(x, axis=2)
 	# x_cumsum.shape = (?,6040,5)
-	output = K.softmax(x_cumsum)
+	
+	#output = K.softmax(x_cumsum)
+	output = softmax_with_extra(x_cumsum,axis=2)
 	# output = (?,6040,5)
 	return output
 
@@ -52,13 +64,15 @@ def D_output_shape(input_shape):
 
 
 def rating_cost_lambda_func(args):
-	alpha=1.0
+	alpha=1.
 	std=0.01
 	"""
 	"""
 	pred_score,true_ratings,input_masks,output_masks,D,d = args
 	pred_score_cum = K.cumsum(pred_score, axis=2)
-	prob_item_ratings = K.softmax(pred_score_cum)
+
+	#prob_item_ratings = K.softmax(pred_score_cum)
+	prob_item_ratings = softmax_with_extra(pred_score_cum,axis=2)
 	accu_prob_1N = K.cumsum(prob_item_ratings, axis=2)
 	accu_prob_N1 = K.cumsum(prob_item_ratings[:, :, ::-1], axis=2)[:, :, ::-1]
 	mask1N = K.cumsum(true_ratings[:, :, ::-1], axis=2)[:, :, ::-1]
@@ -70,6 +84,8 @@ def rating_cost_lambda_func(args):
 	nll = std * K.sum(nll_item_ratings,axis=1) * 1.0 * D / (D - d + 1e-6) + alpha * K.sum(cost_ordinal,axis=1) * 1.0 * D / (D - d + 1e-6)
 	cost = K.mean(nll)
 	cost = K.expand_dims(cost, 0)
+
+	#cost = mu * y + (1 - mu) * p
 
 	return cost
 	
@@ -89,7 +105,7 @@ class RMSE_eval(Callback):
 	def eval_rmse(self):
 		squared_error = []
 		n_samples = []
-		for batch in self.data_set.generate(max_iters=1):
+		for i,batch in enumerate(self.data_set.generate(max_iters=1)):
 			inp_r = batch[0]['input_ratings']
 			out_r = batch[0]['output_ratings']
 			inp_m = batch[0]['input_masks']
@@ -102,6 +118,11 @@ class RMSE_eval(Callback):
 			pred_r[:, self.new_items] = 3
 
 			mask = out_r.sum(axis=2)
+
+			#if i == 0:
+			#	print [true_r[0][j] for j in np.nonzero(true_r[0]* mask[0])[0]]
+			#	print [pred_r[0][j] for j in np.nonzero(pred_r[0]* mask[0])[0]]
+
 			se = np.sum(np.square(true_r - pred_r) * mask)
 			n = np.sum(mask)
 			squared_error.append(se)
@@ -125,13 +146,13 @@ class RMSE_eval(Callback):
 
 
 if __name__ == '__main__':
-	batch_size = 16
+	batch_size = 64
 	num_users = 6040
 	num_items = 3706
 	data_sample = 1.0
 	input_dim0 = 6040
 	input_dim1 = 5
-	hidden_dim = 100
+	hidden_dim = 500
 	std = 0.0
 	alpha = 1.0
 	print('Loading data...')
@@ -151,21 +172,24 @@ if __name__ == '__main__':
 	train_set = DataSet(train_file_list,
 		num_users=num_users,
 		num_items=num_items,
-		batch_size=batch_size)
+		batch_size=batch_size,
+		mode=0)
 	val_set = DataSet(val_file_list,
 		num_users=num_users,
 		num_items=num_items,
-		batch_size=batch_size)
+		batch_size=batch_size,
+		mode=1)
 
 
 
 	rating_freq = np.zeros((6040, 5))
 	init_b = np.zeros((6040, 5))
-	for batch in train_set.generate(max_iters=1):
+	for batch in val_set.generate(max_iters=1):
 		inp_r = batch[0]['input_ratings']
 		out_r = batch[0]['output_ratings']
 		inp_m = batch[0]['input_masks']
 		out_m = batch[0]['output_masks'] 
+
 		rating_freq += inp_r.sum(axis=0)
 
 
@@ -190,11 +214,15 @@ if __name__ == '__main__':
 	output_masks = Input(shape=(input_dim0,),
 		name='output_masks')
 
-
+	nade_layer = Dropout(0.0)(input_layer)
 	nade_layer = NADE(hidden_dim=hidden_dim,
 		activation='tanh',
-		bias=True)(input_layer)
-	nade_layer = Dropout(0.3)(nade_layer)
+		bias=True,
+		W_regularizer=keras.regularizers.l2(0.02),
+		V_regularizer=keras.regularizers.l2(0.02),
+		b_regularizer=keras.regularizers.l2(0.02),
+		c_regularizer=keras.regularizers.l2(0.02))(nade_layer)
+	
 
 	predicted_ratings = Lambda(prediction_layer,
 		output_shape=prediction_output_shape,
@@ -223,8 +251,14 @@ if __name__ == '__main__':
 		outputs=[loss_out,predicted_ratings])
 	cf_nade_model.summary()
 
+
+	adam = Adam(lr=0.001,
+		beta_1=0.9,
+		beta_2=0.999,
+		epsilon=1e-8)
+
 	cf_nade_model.compile(loss={'nade_loss': lambda y_true, y_pred: y_pred},
-		optimizer='adam')
+		optimizer=adam)
 
 	train_rmse_callback = RMSE_eval(data_set=train_set,
 		new_items=new_items,
@@ -235,7 +269,7 @@ if __name__ == '__main__':
 
 	cf_nade_model.fit_generator(train_set.generate(),
 		steps_per_epoch=(train_set.get_corpus_size()//batch_size),
-		epochs=10,
+		epochs=100,
 		validation_data=val_set.generate(),
 		validation_steps=(val_set.get_corpus_size()//batch_size),
 		shuffle=True,

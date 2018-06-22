@@ -28,8 +28,10 @@ class NADE(Layer):
     def __init__(self,
         hidden_dim,
         activation,
-        weight_decay=0.0,
-        kernel_regularizer=regularizers.l2(0.0),
+        W_regularizer=None,
+        V_regularizer=None,
+        b_regularizer=None,
+        c_regularizer=None,
         bias=False, **kwargs):
 
 
@@ -39,7 +41,12 @@ class NADE(Layer):
         self.bias = bias
         self.activation = activation
         self.hidden_dim = hidden_dim
-        self.weight_decay = weight_decay
+
+        self.W_regularizer = regularizers.get(W_regularizer)
+        self.V_regularizer = regularizers.get(V_regularizer)
+        self.b_regularizer = regularizers.get(b_regularizer)
+        self.c_regularizer = regularizers.get(c_regularizer)
+
         super(NADE, self).__init__(**kwargs)
 
 
@@ -49,25 +56,26 @@ class NADE(Layer):
 
         self.W = self.add_weight(shape=(self.input_dim1,self.input_dim2,self.hidden_dim),
                                  initializer=self.init,
-                                 name='{}_W'.format(self.name))
+                                 name='{}_W'.format(self.name),
+                                 regularizer=self.W_regularizer)
         if self.bias:
             self.c = self.add_weight(shape=(self.hidden_dim,),
                                      initializer=self.init,
-                                     name='{}_c'.format(self.name))
+                                     name='{}_c'.format(self.name),
+                                     regularizer=self.c_regularizer)
 
-        self.Q = self.add_weight(shape=(self.input_dim1,self.hidden_dim),
-                                 initializer=self.init,
-                                 name='{}_Q'.format(self.name))
 
         if self.bias:
             self.b = self.add_weight(shape=(self.input_dim1,self.input_dim2),
                                      initializer=self.init,
-                                     name='{}_b'.format(self.name))
+                                     name='{}_b'.format(self.name),
+                                     regularizer=self.b_regularizer)
 
 
         self.V = self.add_weight(shape=(self.hidden_dim,self.input_dim1,self.input_dim2),
                                  initializer=self.init,
-                                 name='{}_V'.format(self.name))
+                                 name='{}_V'.format(self.name),
+                                 regularizer=self.V_regularizer)
 
         super(NADE, self).build(input_shape)
 
@@ -82,17 +90,9 @@ class NADE(Layer):
             output_ = tf.tensordot(x, self.W, axes=[[1, 2], [0, 1]]) + self.c
         else:
             output_ = tf.tensordot(x, self.W, axes=[[1, 2], [0, 1]])
-        output_ = tf.reshape(output_, [-1,self.hidden_dim])
+        h_out = tf.reshape(output_, [-1,self.hidden_dim])
         #tf.cast(indices, tf.float32)
         # output_.shape = (?,500)
-
-        input_mask = K.sum(x, axis = 2)
-        # input_mask.shape = (?,6040)
-        # Q.shape = (6040, 500)
-        output_masked = K.dot(input_mask, self.Q) 
-        # output_masked.shape = (?,500)
-        h_out = output_ + output_masked
-        # h_out.shape = (?,500)
 
         h_out_act = K.tanh(h_out)
         # h_out_act.shape = (?,500)

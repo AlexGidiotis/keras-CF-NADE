@@ -28,6 +28,7 @@ class DataSet(keras.callbacks.Callback):
 		num_users,
 		num_items,
 		batch_size,
+		mode,
 		shuffle=True):
 		"""
 		"""
@@ -36,7 +37,7 @@ class DataSet(keras.callbacks.Callback):
 		self.num_users = num_users
 		self.num_items = num_items
 		self.batch_size = batch_size
-
+		self.mode = mode
 		self.shuffle = shuffle
 
 
@@ -106,34 +107,53 @@ class DataSet(keras.callbacks.Callback):
 							line = json.loads(line)
 							movie_id = line['movieId']
 							rankings = line['rankings']
+							
 
 
 
 							user_ids = []
 							values = []
+							flags = []
 							for ranking in rankings:
 								user_ids.append(int(ranking['userId']))
 								values.append(int(ranking['value']))
+								flags.append(int(ranking['flag']))
 
 
-
-							ordering = np.random.permutation(np.arange(len(user_ids)))
-							d = np.random.randint(0, len(ordering))
-							flag_in = (ordering < d)
-							flag_out = (ordering >= d)
-
-
-							
-							self.input_mask_vectors[i][user_ids] = flag_in
-							self.output_mask_vectors[i][user_ids] = flag_out
+							if self.mode == 0:
+								ordering = np.random.permutation(np.arange(len(user_ids)))
+								d = np.random.randint(0, len(ordering))
+								flag_in = (ordering < d)
+								flag_out = (ordering >= d)
 
 
+								
+								self.input_mask_vectors[i][user_ids] = flag_in
+								self.output_mask_vectors[i][user_ids] = flag_out
 
-							for j,(user_id,value) in enumerate(zip(user_ids,values)):
-								if flag_in[j]:
-									self.input_ranking_vectors[i,user_id,(value-1)] = 1
-								else:
-									self.output_ranking_vectors[i,user_id,(value-1)] = 1
+								if self.shuffle:
+									shuffle_list = list(zip(user_ids, values))
+									random.shuffle(shuffle_list)
+									user_ids, values = zip(*shuffle_list)
+								for j,(user_id,value) in enumerate(zip(user_ids,values)):
+									if flag_in[j]:
+										self.input_ranking_vectors[i,user_id,(value-1)] = 1
+									else:
+										self.output_ranking_vectors[i,user_id,(value-1)] = 1
+							elif self.mode == 1:
+								for j,(user_id,value,flag) in enumerate(zip(user_ids,values,flags)):
+									if flag == 0:
+										self.input_ranking_vectors[i,user_id,(value-1)] = 1
+									else:
+										self.output_ranking_vectors[i,user_id,(value-1)] = 1
+							elif self.mode == 2:
+								for j,(user_id,value,flag) in enumerate(zip(user_ids,values,flags)):
+									if flag == 0:
+										self.input_ranking_vectors[i,user_id,(value-1)] = 1
+									if flag == 1:
+										self.input_ranking_vectors[i,user_id,(value-1)] = 1
+									else:
+										self.output_ranking_vectors[i,user_id,(value-1)] = 1
 
 
 						inputs = {'input_ratings': self.input_ranking_vectors,
