@@ -15,12 +15,6 @@ from keras.optimizers import Adam
 import tensorflow as tf
 
 
-def softmax_with_extra(x,axis):
-	e = K.exp(x - K.max(x, axis=axis, keepdims=True))
-	s = K.sum(e, axis=axis, keepdims=True)
-
-	return e / s
-
 
 
 def prediction_layer(x):
@@ -28,8 +22,7 @@ def prediction_layer(x):
 	x_cumsum = K.cumsum(x, axis=2)
 	# x_cumsum.shape = (?,6040,5)
 	
-	#output = K.softmax(x_cumsum)
-	output = softmax_with_extra(x_cumsum,axis=2)
+	output = K.softmax(x_cumsum)
 	# output = (?,6040,5)
 	return output
 
@@ -71,8 +64,7 @@ def rating_cost_lambda_func(args):
 	pred_score,true_ratings,input_masks,output_masks,D,d = args
 	pred_score_cum = K.cumsum(pred_score, axis=2)
 
-	#prob_item_ratings = K.softmax(pred_score_cum)
-	prob_item_ratings = softmax_with_extra(pred_score_cum,axis=2)
+	prob_item_ratings = K.softmax(pred_score_cum)
 	accu_prob_1N = K.cumsum(prob_item_ratings, axis=2)
 	accu_prob_N1 = K.cumsum(prob_item_ratings[:, :, ::-1], axis=2)[:, :, ::-1]
 	mask1N = K.cumsum(true_ratings[:, :, ::-1], axis=2)[:, :, ::-1]
@@ -85,7 +77,6 @@ def rating_cost_lambda_func(args):
 	cost = K.mean(nll)
 	cost = K.expand_dims(cost, 0)
 
-	#cost = mu * y + (1 - mu) * p
 
 	return cost
 	
@@ -119,9 +110,11 @@ class RMSE_eval(Callback):
 
 			mask = out_r.sum(axis=2)
 
-			#if i == 0:
-			#	print [true_r[0][j] for j in np.nonzero(true_r[0]* mask[0])[0]]
-			#	print [pred_r[0][j] for j in np.nonzero(pred_r[0]* mask[0])[0]]
+			'''
+			if i == 0:
+				print [true_r[0][j] for j in np.nonzero(true_r[0]* mask[0])[0]]
+				print [pred_r[0][j] for j in np.nonzero(pred_r[0]* mask[0])[0]]
+			'''
 
 			se = np.sum(np.square(true_r - pred_r) * mask)
 			n = np.sum(mask)
@@ -152,7 +145,7 @@ if __name__ == '__main__':
 	data_sample = 1.0
 	input_dim0 = 6040
 	input_dim1 = 5
-	hidden_dim = 500
+	hidden_dim = 250
 	std = 0.0
 	alpha = 1.0
 	print('Loading data...')
@@ -161,10 +154,13 @@ if __name__ == '__main__':
 
 	train_file_list = sorted(glob.glob(os.path.join(('data/train_set'), 'part*')))
 	val_file_list = sorted(glob.glob(os.path.join(('data/val_set/'), 'part*')))
+	test_file_list = sorted(glob.glob(os.path.join(('data/test_set/'), 'part*')))
 	train_file_list = [dfile for dfile in train_file_list if os.stat(dfile).st_size != 0]
 	val_file_list = [dfile for dfile in val_file_list if os.stat(dfile).st_size != 0]
+	test_file_list = [dfile for dfile in test_file_list if os.stat(dfile).st_size != 0]
 	random.shuffle(train_file_list)
 	random.shuffle(val_file_list)
+	random.shuffle(test_file_list)
 	train_file_list = train_file_list[:max(int(len(train_file_list) * data_sample),1)]
 
 
@@ -179,6 +175,11 @@ if __name__ == '__main__':
 		num_items=num_items,
 		batch_size=batch_size,
 		mode=1)
+	test_set = DataSet(test_file_list,
+		num_users=num_users,
+		num_items=num_items,
+		batch_size=batch_size,
+		mode=2)
 
 
 
@@ -267,11 +268,54 @@ if __name__ == '__main__':
 		new_items=new_items,
 		training_set=False)
 
+	print 'Training...'
 	cf_nade_model.fit_generator(train_set.generate(),
 		steps_per_epoch=(train_set.get_corpus_size()//batch_size),
-		epochs=100,
+		epochs=30,
 		validation_data=val_set.generate(),
 		validation_steps=(val_set.get_corpus_size()//batch_size),
 		shuffle=True,
 		callbacks=[train_set,val_set,train_rmse_callback,val_rmse_callback],
 		verbose=1)
+
+
+
+	print 'Testing...'
+	rmses = []
+	rate_score = np.array([1, 2, 3, 4, 5], np.float32)
+	new_items = new_items
+
+
+
+	squared_error = []
+	n_samples = []
+	for i,batch in enumerate(test_set.generate(max_iters=1)):
+		inp_r = batch[0]['input_ratings']
+		out_r = batch[0]['output_ratings']
+		inp_m = batch[0]['input_masks']
+		out_m = batch[0]['output_masks']
+
+		pred_batch = cf_nade_model.predict(batch[0])[1]
+		true_r = out_r.argmax(axis=2) + 1
+		pred_r = (pred_batch * rate_score[np.newaxis, np.newaxis, :]).sum(axis=2)
+
+		pred_r[:, new_items] = 3
+
+		mask = out_r.sum(axis=2)
+
+		'''
+		if i == 0:
+			print [true_r[0][j] for j in np.nonzero(true_r[0]* mask[0])[0]]
+			print [pred_r[0][j] for j in np.nonzero(pred_r[0]* mask[0])[0]]
+		'''
+
+		se = np.sum(np.square(true_r - pred_r) * mask)
+		n = np.sum(mask)
+		squared_error.append(se)
+		n_samples.append(n)
+
+		
+	total_squared_error = np.array(squared_error).sum()
+	total_n_samples = np.array(n_samples).sum()
+	rmse = np.sqrt(total_squared_error / (total_n_samples * 1.0 + 1e-8))
+	print "test set RMSE is %f"%(rmse) 
