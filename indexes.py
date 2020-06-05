@@ -9,11 +9,6 @@ import numpy as np
 from pyspark.sql.functions import col, udf
 
 
-
-
-
-
-
 def create_user_index(ui_mat_rdd,
 	export=False):
 	"""
@@ -25,7 +20,6 @@ def create_user_index(ui_mat_rdd,
 	Returns:
 		user_index: A dictionary with the indexes.
 	"""
-
 	user_index = ui_mat_rdd.map(lambda (usrId,docId,value): usrId) \
 		.distinct() \
 		.zipWithIndex() \
@@ -40,10 +34,6 @@ def create_user_index(ui_mat_rdd,
 	return user_index
 
 
-
-
-
-
 def create_doc_index(ui_mat_rdd,
 	export=False):
 	"""
@@ -56,7 +46,6 @@ def create_doc_index(ui_mat_rdd,
 	Returns:
 		doc_index: A dictionary with the indexes.
 	"""
-
 	doc_index = ui_mat_rdd.map(lambda (usrId,docId,value): docId) \
 		.distinct() \
 		.zipWithIndex() \
@@ -69,10 +58,6 @@ def create_doc_index(ui_mat_rdd,
 			json.dump(doc_index, fp)
 
 	return doc_index
-
-
-
-
 
 
 def load_indexes():
@@ -100,11 +85,6 @@ def load_indexes():
 	inv_user_index = {v: k for k, v in user_index.iteritems()}
 
 	return doc_index, user_index, inv_doc_index, inv_user_index
-
-
-
-
-
 
 
 def map_recommendations(recommendations,
