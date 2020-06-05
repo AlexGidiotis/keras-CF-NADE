@@ -21,6 +21,7 @@ def dot_product(x, kernel):
         return K.dot(x, kernel)
     
 
+    
 class NADE(Layer):
     """
     """
@@ -34,10 +35,7 @@ class NADE(Layer):
         c_regularizer=None,
         bias=False, **kwargs):
 
-
-        self.init = initializers.get('uniform')
-
-    
+        self.init = initializers.get('uniform')    
         self.bias = bias
         self.activation = activation
         self.hidden_dim = hidden_dim
@@ -48,7 +46,6 @@ class NADE(Layer):
         self.c_regularizer = regularizers.get(c_regularizer)
 
         super(NADE, self).__init__(**kwargs)
-
 
     def build(self, input_shape):
         self.input_dim1 = input_shape[1]
@@ -64,7 +61,6 @@ class NADE(Layer):
                                      name='{}_c'.format(self.name),
                                      regularizer=self.c_regularizer)
 
-
         if self.bias:
             self.b = self.add_weight(shape=(self.input_dim1,self.input_dim2),
                                      initializer=self.init,
@@ -79,9 +75,7 @@ class NADE(Layer):
 
         super(NADE, self).build(input_shape)
 
-
     def call(self, x):
-
         x = K.cumsum(x[:, :, ::-1], axis=2)[:, :, ::-1]
         # x.shape = (?,6040,5)
         # W.shape = (6040, 5, 500)
@@ -106,7 +100,6 @@ class NADE(Layer):
         output = tf.reshape(output, [-1,self.input_dim1,self.input_dim2])
         return output
 
-
-
     def compute_output_shape(self, input_shape):
         return (input_shape[0],input_shape[1],input_shape[2])
+ 
