@@ -15,8 +15,6 @@ from keras.optimizers import Adam
 import tensorflow as tf
 
 
-
-
 def prediction_layer(x):
 	# x.shape = (?,6040,5)
 	x_cumsum = K.cumsum(x, axis=2)
@@ -27,11 +25,8 @@ def prediction_layer(x):
 	return output
 
 
-
 def prediction_output_shape(input_shape):
-	
 	return input_shape
-
 
 
 def d_layer(x):
@@ -44,16 +39,11 @@ def d_output_shape(input_shape):
 	return (input_shape[0],)
 
 
-
 def D_layer(x):
-	
 	return K.sum(x,axis=1)
 
 def D_output_shape(input_shape):
-	
 	return (input_shape[0],)
-
-
 
 
 def rating_cost_lambda_func(args):
@@ -77,8 +67,8 @@ def rating_cost_lambda_func(args):
 	cost = K.mean(nll)
 	cost = K.expand_dims(cost, 0)
 
-
 	return cost
+	
 	
 
 class RMSE_eval(Callback):
@@ -86,7 +76,6 @@ class RMSE_eval(Callback):
 		data_set,
 		new_items,
 		training_set):
-
 		self.data_set = data_set
 		self.rmses = []
 		self.rate_score = np.array([1, 2, 3, 4, 5], np.float32)
@@ -138,6 +127,7 @@ class RMSE_eval(Callback):
 		self.rmses.append(score)
 
 
+		
 if __name__ == '__main__':
 	batch_size = 64
 	num_users = 6040
@@ -149,9 +139,6 @@ if __name__ == '__main__':
 	std = 0.0
 	alpha = 1.0
 	print('Loading data...')
-
-
-
 	train_file_list = sorted(glob.glob(os.path.join(('data/train_set'), 'part*')))
 	val_file_list = sorted(glob.glob(os.path.join(('data/val_set/'), 'part*')))
 	test_file_list = sorted(glob.glob(os.path.join(('data/test_set/'), 'part*')))
@@ -162,9 +149,6 @@ if __name__ == '__main__':
 	random.shuffle(val_file_list)
 	random.shuffle(test_file_list)
 	train_file_list = train_file_list[:max(int(len(train_file_list) * data_sample),1)]
-
-
-
 	train_set = DataSet(train_file_list,
 		num_users=num_users,
 		num_items=num_items,
@@ -181,8 +165,6 @@ if __name__ == '__main__':
 		batch_size=batch_size,
 		mode=2)
 
-
-
 	rating_freq = np.zeros((6040, 5))
 	init_b = np.zeros((6040, 5))
 	for batch in val_set.generate(max_iters=1):
@@ -193,19 +175,12 @@ if __name__ == '__main__':
 
 		rating_freq += inp_r.sum(axis=0)
 
-
-
 	log_rating_freq = np.log(rating_freq + 1e-8)
 	log_rating_freq_diff = np.diff(log_rating_freq, axis=1)
 	init_b[:, 1:] = log_rating_freq_diff
 	init_b[:, 0] = log_rating_freq[:, 0]
-
-
-
 	new_items = np.where(rating_freq.sum(axis=1) == 0)[0]
 
-
-	
 	input_layer = Input(shape=(input_dim0,input_dim1),
 		name='input_ratings')
 	output_ratings = Input(shape=(input_dim0,input_dim1),
@@ -224,34 +199,26 @@ if __name__ == '__main__':
 		b_regularizer=keras.regularizers.l2(0.02),
 		c_regularizer=keras.regularizers.l2(0.02))(nade_layer)
 	
-
 	predicted_ratings = Lambda(prediction_layer,
 		output_shape=prediction_output_shape,
 		name='predicted_ratings')(nade_layer)
 
-	
-
 	d = Lambda(d_layer,
 		output_shape=d_output_shape,
 		name='d')(input_masks)	
-
-
-
+	
 	sum_masks = add([input_masks, output_masks])
 	D = Lambda(D_layer,
 		output_shape=D_output_shape,
 		name='D')(sum_masks)
 
-	
 	loss_out = Lambda(rating_cost_lambda_func,
 		output_shape=(1,),
 		name='nade_loss')([nade_layer,output_ratings,input_masks,output_masks,D,d])
 
-
 	cf_nade_model = Model(inputs=[input_layer,output_ratings,input_masks,output_masks],
 		outputs=[loss_out,predicted_ratings])
 	cf_nade_model.summary()
-
 
 	adam = Adam(lr=0.001,
 		beta_1=0.9,
@@ -278,14 +245,10 @@ if __name__ == '__main__':
 		callbacks=[train_set,val_set,train_rmse_callback,val_rmse_callback],
 		verbose=1)
 
-
-
 	print 'Testing...'
 	rmses = []
 	rate_score = np.array([1, 2, 3, 4, 5], np.float32)
 	new_items = new_items
-
-
 
 	squared_error = []
 	n_samples = []
@@ -314,7 +277,6 @@ if __name__ == '__main__':
 		squared_error.append(se)
 		n_samples.append(n)
 
-		
 	total_squared_error = np.array(squared_error).sum()
 	total_n_samples = np.array(n_samples).sum()
 	rmse = np.sqrt(total_squared_error / (total_n_samples * 1.0 + 1e-8))
