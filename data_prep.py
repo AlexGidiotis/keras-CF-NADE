@@ -12,12 +12,6 @@ from indexes import create_user_index, create_doc_index, load_indexes, map_recom
 data_path = '/home/alex/Documents/Data/ml-1m/ratings.dat'
 
 
-
-
-
-
-
-
 def read_data(sc,
 	data_file,
 	delimiter='::'):
@@ -39,12 +33,6 @@ def read_data(sc,
 	return ui_mat_rdd
 
 
-
-
-
-
-
-
 if __name__ == "__main__":
 
 	sc = SparkContext()
@@ -54,8 +42,6 @@ if __name__ == "__main__":
 		.sample(False,1.0,seed=0) \
 		.persist()
 
-
-
 	print 'Creating usr and doc indexes...'
 	user_index = create_user_index(ui_mat_rdd)
 	doc_index = create_doc_index(ui_mat_rdd)
@@ -63,9 +49,6 @@ if __name__ == "__main__":
 	b_didx = sc.broadcast(doc_index)
 
 	ui_mat_rdd = ui_mat_rdd.map(lambda (usrId,docId,value): (b_uidx.value[usrId],b_didx.value[docId],value))
-		
-
-
 	num_users = ui_mat_rdd.map(lambda (usrId,docId,value): usrId) \
 		.distinct() \
 		.count()
@@ -74,11 +57,9 @@ if __name__ == "__main__":
 		.count()
 	print 'users:',num_users,'products:',num_movies
 
-
 	df = spark.createDataFrame(ui_mat_rdd,['userId','movieId','value'])
 
 	ui_mat_rdd.unpersist()
-
 
 	print 'Splitting data set...'
 	df = df.orderBy(F.rand())
@@ -104,9 +85,6 @@ if __name__ == "__main__":
 	print val_size,'validation examples'
 	print test_size,'testing example'
 
-
-
-
 	train_examples = train_df.select("movieId", F.struct(["userId","value","flag"]).alias("ranking")) \
 		.groupby('movieId') \
 		.agg(F.collect_list('ranking').alias('rankings'))
@@ -120,7 +98,6 @@ if __name__ == "__main__":
 	train_examples.show()
 	val_examples.show()
 	test_examples.show()
-
 
 	train_examples.coalesce(1).write.json(path="data/train_set",
 		mode='overwrite')
